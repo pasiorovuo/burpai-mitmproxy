@@ -3,9 +3,9 @@
 A proxy implementation for intercepting and proxying Burp AI requests to a
 custom OpenAI-compatible backend. Portswigger does not enable use of company-
 managed AI implementations, so this project attempts to resolve the issue by
-modifying and proxying the requests to a backend that can be managed by
-organizations themselves, and thus avoid sending sensitive data to Portswigger
-and the US.
+modifying and proxying the requests to a OpenAI-compatible API backend that can
+be managed by organizations themselves, and thus avoid sending sensitive data to
+Portswigger and the US.
 
 The proxy denies all requests `ai.portswigger.net` if `debug` is not enabled
 (the default). In `debug` mode the proxy forwards the requests to Portswigger,
@@ -40,7 +40,7 @@ Configuration options are described below. They are set with
 `--set option=value` command line parameters for `mitmdump`.
 
 - `url`: The URL for the AI backend. This expects to be the full URL to an
-  OpenAI `/v1/chat/completions` API.
+  OpenAI-compatible `/v1/chat/completions` API.
 - `api_key`: The Open AI compatible API key
 - `debug`: Whether to enable debug. In debug mode the proxy will output all
   original and modified requests and their responses. Additionally, the proxy
