@@ -8,6 +8,7 @@ import mitmproxy.addonmanager
 import mitmproxy.ctx
 import mitmproxy.exceptions
 import mitmproxy.http
+import mitmproxy.proxy.server_hooks
 
 import prompts
 import responses
@@ -251,6 +252,20 @@ class BurpAiProxy:
             if r.content:
                 print(r.content.decode("utf-8", errors="replace"))
             print("<--")
+
+    def server_connect(
+        self, data: mitmproxy.proxy.server_hooks.ServerConnectionHookData
+    ) -> None:
+        """
+        Hook to modify the server connection before it is established. Prevents
+        connections to the original Burp AI domain and redirects them to the
+        configured backend URL.
+        """
+        host, _ = data.server.address if data.server.address else ("", 0)
+        if host == BURP_AI_DOMAIN:
+            backend_url = urllib.parse.urlparse(self._url)
+            data.server.address = (str(backend_url.hostname), backend_url.port or 443)
+            data.server.sni = backend_url.hostname
 
 
 addons = [BurpAiProxy()]
