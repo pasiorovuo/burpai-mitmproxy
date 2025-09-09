@@ -184,7 +184,7 @@ class BurpAiProxy:
             self.handle_response(flow)
         else:
             self._logger.warning(
-                "\033[1;41mThis request was unhandled in burpai-proxy\033[0m"
+                "\033[1;41mThis response was unhandled in burpai-proxy\033[0m"
             )
 
         self._log_rr(flow.response)
