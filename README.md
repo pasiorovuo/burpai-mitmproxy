@@ -7,6 +7,10 @@ modifying and proxying the requests to a backend that can be managed by
 organizations themselves, and thus avoid sending sensitive data to Portswigger
 and the US.
 
+The proxy denies all requests `ai.portswigger.net` if `debug` is not enabled
+(the default). In `debug` mode the proxy forwards the requests to Portswigger,
+and logs the requests and responses in the console.
+
 ## Installation
 
 - Clone the repo
@@ -20,8 +24,8 @@ and the US.
 
 ## Running
 
-- Start the proxy `mitmdump --listen-port 9001 --script proxy.py --set url=<open ai chat completions URL> --set api_key=<your API key>`
-- Profit
+- Start the proxy: `mitmdump --listen-port 9001 --script proxy.py --set url=<open ai chat completions URL> --set api_key=<your API key>`
+- Configure a HTTP Proxy in Burp and point it to the running `mitmproxy`.
 
 ## Configuration
 
