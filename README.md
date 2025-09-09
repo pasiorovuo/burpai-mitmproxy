@@ -11,6 +11,13 @@ The proxy denies all requests `ai.portswigger.net` if `debug` is not enabled
 (the default). In `debug` mode the proxy forwards the requests to Portswigger,
 and logs the requests and responses in the console.
 
+Currently working features are
+
+- Explain this
+- API extensions use (Shadow Repeater has been tested)
+
+See `Contributing` below for more information on how to contribute.
+
 ## Installation
 
 - Clone the repo
@@ -46,3 +53,9 @@ Configuration options are described below. They are set with
   `Portswigger-Burp-Ai-Token`.
 - `response_headers_denylist`: A comma-separated list of header regex names that
   are removed from the responses. Defaults to empty.
+
+## Contributing
+
+Currently only a subset of Burp's functionality has been implemented. I'm
+hoping to receive PRs for additional request examples (see `doc/requests.md`) as
+well as implementations for them.
