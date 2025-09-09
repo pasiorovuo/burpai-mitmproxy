@@ -40,6 +40,7 @@ Configuration options are described below. They are set with
   will forward the requests that it is unable to handle to the Burp AI backend
   so the requests and responses can be monitored. This is mainly for
   development. Defaults to `false`.
+- `model`: Defines the AI model to use. Defaults to `gpt-4o`.
 - `request_headers_denylist`: A comma-separated list of regex header names that
   are removed from the requests to the Open AI backend. Defaults to
   `Portswigger-Burp-Ai-Token`.
