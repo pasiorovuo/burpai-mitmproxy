@@ -1,12 +1,25 @@
 import abc
+import enum
 import json
+import typing
 
 DEFAULT_MODEL = "gpt-4o"
+
+
+class Role(str, enum.Enum):
+    SYSTEM = "system"
+    USER = "user"
+
+
+class Message(typing.TypedDict):
+    role: Role
+    content: str
 
 
 class Prompt(abc.ABC):
     _max_tokens: int = 500
     _model: str = DEFAULT_MODEL
+    _temperature: float = 1.0
 
     @classmethod
     def set_model(cls, model: str) -> None:
@@ -16,9 +29,9 @@ class Prompt(abc.ABC):
     def model(cls) -> str:
         return cls._model or DEFAULT_MODEL
 
-    def __init__(self, payload: str | None) -> None:
+    def __init__(self, messages: typing.List[Message]) -> None:
         super().__init__()
-        self.payload = payload
+        self.messages = messages
 
     def __str__(self) -> str:
         return json.dumps(self.text())
@@ -31,11 +44,9 @@ class Prompt(abc.ABC):
         return json.dumps(
             {
                 "model": Prompt.model(),
-                "messages": [
-                    {"role": "system", "content": self.system_prompt},
-                    {"role": "user", "content": self.payload},
-                ],
+                "messages": self.messages,
                 "max_completion_tokens": self.max_tokens,
+                "temperature": self.temperature,
                 "response_format": {
                     # "json_schema": {
                     #     "name": "burp_ai",
@@ -78,15 +89,23 @@ class Prompt(abc.ABC):
         )
 
     @property
-    @abc.abstractmethod
-    def system_prompt(self) -> str: ...
-
-    @property
     def max_tokens(self) -> int:
         return self._max_tokens
 
+    @property
+    def temperature(self) -> float:
+        return self._temperature
+
 
 class ExplainThisPrompt(Prompt):
+    def __init__(self, payload: str | None) -> None:
+        super().__init__(
+            messages=[
+                {"role": Role.SYSTEM, "content": self.system_prompt},
+                {"role": Role.USER, "content": payload or ""},
+            ]
+        )
+
     @property
     def system_prompt(self) -> str:
         return (
@@ -103,21 +122,33 @@ class MontoyaPrompt(Prompt):
     Burp Extensions use API for AI interactions.
     """
 
-    _system_prompt: str
+    _max_tokens = 128000
 
     def __init__(self, payload: str | None) -> None:
         j = json.loads(payload or "{}")
 
-        system_prompt = user_prompt = ""
-        for message in j.get("messages", []):
-            if message.get("type", "").lower() == "system":
-                system_prompt = message.get("text", "")
-            elif message.get("type", "").lower() == "user":
-                user_prompt = message.get("text", "")
+        messages: typing.List[Message] = []
+        for m in j.get("messages", []):
+            if m.get("type", "").lower() == "system":
+                messages.append({"role": Role.SYSTEM, "content": m.get("text", "")})
+            elif m.get("type", "").lower() == "user":
+                messages.append({"role": Role.USER, "content": m.get("text", "")})
 
-        super().__init__(user_prompt)
-        self._system_prompt = system_prompt
+        super().__init__(messages=messages)
+
+        # Parse config
+        if "config" in j:
+            config = j["config"]
+
+            if "temperature" in config:
+                try:
+                    temperature = float(config["temperature"])
+                except ValueError:
+                    temperature = 1.0
+
+                if 0.0 <= temperature <= 2.0:
+                    self._temperature = temperature
 
     @property
-    def system_prompt(self) -> str:
-        return self._system_prompt
+    def temperature(self) -> float:
+        return self._temperature
