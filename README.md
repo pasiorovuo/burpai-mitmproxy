@@ -31,7 +31,7 @@ See `Contributing` below for more information on how to contribute.
 
 ## Running
 
-- Start the proxy: `mitmdump --listen-port 9001 --script proxy.py --set url=<open ai chat completions URL> --set api_key=<your API key>`
+- Start the proxy: `mitmdump --listen-port 9001 --script proxy.py --set url=<open ai chat completions URL> --set api_key=<your API key> --set save_dir=./flows`
 - Configure a HTTP Proxy in Burp and point `ai.portswigger.net` to the running
   `mitmproxy`. It's not recommended to proxy all traffic via the proxy, because
   `mitmproxy` may impact testing of some categories of vulnerabilities such as
@@ -45,6 +45,8 @@ Configuration options are described below. They are set with
 - `url`: The URL for the AI backend. This expects to be the full URL to an
   OpenAI-compatible `/v1/chat/completions` API.
 - `api_key`: The Open AI compatible API key
+- `save_dir`: Optional directory where completed flows are stored as one
+  text file per flow. The directory is created if needed.
 - `debug`: Whether to enable debug. In debug mode the proxy will output all
   original and modified requests and their responses. Additionally, the proxy
   will forward the requests that it is unable to handle to the Burp AI backend
