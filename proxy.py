@@ -1,8 +1,12 @@
 import http
 import json
 import logging
+import pathlib
 import re
 import urllib.parse
+import uuid
+import io
+from typing import cast
 
 import mitmproxy.addonmanager
 import mitmproxy.ctx
@@ -13,17 +17,18 @@ import mitmproxy.proxy.server_hooks
 import prompts
 import responses
 
-
 BURP_AI_DOMAIN = "ai.portswigger.net"
 # We store the original URL here so that we can handle the request/response
 # appropriately after the request has been modified to point to the new URL.
 ORIGINAL_URL_HEADER = "X-BurpAiProxy-Url"
+FLOW_UUID_METADATA_KEY = "burpai_proxy_flow_uuid"
 
 
 class BurpAiProxy:
     def __init__(self) -> None:
         self._url = ""
         self._api_key = ""
+        self._save_dir: pathlib.Path | None = None
         self._request_headers_blocklist: set[str] = set()
         self._response_headers_blocklist: set[str] = set()
         self._debug = False
@@ -43,6 +48,15 @@ class BurpAiProxy:
             default="",
             help="The API key to use when forwarding requests to the AI service.",
             name="api_key",
+            typespec=str,
+        )
+        loader.add_option(
+            default="",
+            help=(
+                "An optional directory in which completed Burp-side flows are saved as "
+                "text files."
+            ),
+            name="save_dir",
             typespec=str,
         )
         loader.add_option(
@@ -82,6 +96,18 @@ class BurpAiProxy:
         if "api_key" in updated:
             self._api_key = mitmproxy.ctx.options.api_key
 
+        if "save_dir" in updated:
+            save_dir = mitmproxy.ctx.options.save_dir.strip()
+            self._save_dir = None
+            if save_dir:
+                path = pathlib.Path(save_dir).expanduser()
+                path.mkdir(parents=True, exist_ok=True)
+                if not path.is_dir():
+                    raise mitmproxy.exceptions.OptionsError(
+                        "The `save_dir` option must point to a directory."
+                    )
+                self._save_dir = path
+
         if "request_headers_denylist" in updated:
             self._request_headers_blocklist = set(
                 h.strip()
@@ -116,7 +142,7 @@ class BurpAiProxy:
             return
 
         # Log original request
-        self._log_rr(flow.request)
+        self._save_request(flow, flow.request, original=True)
 
         # Handle specific paths as needed
         if flow.request.path == "/burp/balance":
@@ -147,7 +173,7 @@ class BurpAiProxy:
                 return
 
         # Log modified request
-        self._log_rr(flow.request)
+        self._save_request(flow, flow.request, original=False)
 
     def response(self, flow: mitmproxy.http.HTTPFlow) -> None:
         backend_url = urllib.parse.urlparse(self._url)
@@ -164,7 +190,7 @@ class BurpAiProxy:
             return
 
         # Log original response
-        self._log_rr(flow.response)
+        self._save_response(flow, original=True)
 
         if ORIGINAL_URL_HEADER not in flow.request.headers:
             # This is not a request we have modified, ignore it
@@ -188,7 +214,7 @@ class BurpAiProxy:
                 "\033[1;41mThis response was unhandled in burpai-proxy\033[0m"
             )
 
-        self._log_rr(flow.response)
+        self._save_response(flow, original=False)
 
     def proxy_request(
         self, flow: mitmproxy.http.HTTPFlow, prompt: prompts.Prompt
@@ -218,7 +244,61 @@ class BurpAiProxy:
             del message["role"]
             flow.response.text = json.dumps(message)
         except Exception as e:
-            print(f"Error processing response: {e}")
+            self._logger.warning(f"Error processing response: {e}")
+
+    def _save_request(
+        self,
+        flow: mitmproxy.http.HTTPFlow,
+        request: mitmproxy.http.Request,
+        original: bool,
+    ) -> None:
+        message = self._serialize_message(request)
+        if message is None:
+            return
+
+        message = (
+            f"--- {'Original' if original else 'Modified'} Request ---\n"
+            f"{message}\n"
+            f"--- End {'Original' if original else 'Modified'} Request ---\n"
+        )
+
+        self._save_message(flow, message)
+
+    def _save_response(self, flow: mitmproxy.http.HTTPFlow, original: bool) -> None:
+        if flow.response is None:
+            return
+
+        message = self._serialize_message(flow.response)
+        if message is None:
+            return
+
+        message = (
+            f"--- {'Original' if original else 'Modified'} Response ---\n"
+            f"{message}\n"
+            f"--- End {'Original' if original else 'Modified'} Response ---\n"
+        )
+        self._save_message(flow, message)
+
+    def _save_message(self, flow: mitmproxy.http.HTTPFlow, message: str) -> None:
+        file_path = self._get_save_filename(flow)
+        if file_path is None:
+            return
+
+        with file_path.open("a") as handle:
+            handle.write(message)
+            handle.write("\n\n")
+            handle.flush()
+
+    def _get_save_filename(self, flow: mitmproxy.http.HTTPFlow) -> pathlib.Path | None:
+        if self._save_dir is None:
+            return None
+
+        flow_uuid = flow.metadata.get(FLOW_UUID_METADATA_KEY)
+        if not isinstance(flow_uuid, str) or not flow_uuid:
+            flow_uuid = str(uuid.uuid4())
+            flow.metadata[FLOW_UUID_METADATA_KEY] = flow_uuid
+
+        return self._save_dir / f"{flow_uuid}.txt"
 
     def _cleanup_headers(
         self, rr: mitmproxy.http.Request | mitmproxy.http.Response, blocklist: set[str]
@@ -231,27 +311,50 @@ class BurpAiProxy:
                 if re.match(regex, header, re.IGNORECASE):
                     del rr.headers[header]
 
-    def _log_rr(
+    def _serialize_message(
         self, r: mitmproxy.http.Request | mitmproxy.http.Response | None
-    ) -> None:
-        """
-        Log the request/response if debugging is enabled.
-        """
+    ) -> str | None:
         if r is None:
-            return
+            return None
 
-        if self._debug:
-            # print() the request/response to avoid timestamps etc.
-            print("-->")
-            if isinstance(r, mitmproxy.http.Request):
-                print(f"{r.method} {r.url} {r.http_version}")
-            else:
-                print(f"{r.status_code} {r.reason} {r.http_version}")
-            print("\n".join([f"{k}: {v}" for k, v in r.headers.items()]))  # type: ignore
-            print("")
-            if r.content:
-                print(r.content.decode("utf-8", errors="replace"))
-            print("<--")
+        s = io.StringIO()
+        # Write the start line
+        if isinstance(r, mitmproxy.http.Request):
+            s.write(f"{r.method} {r.url} {r.http_version}\n")
+        else:
+            s.write(f"{r.http_version} {r.status_code} {r.reason}\n")
+
+        # Write the headers
+        s.writelines(
+            [f"{k}: {v}\n" for k, v in cast(tuple[str, str], r.headers.items())],
+        )
+
+        # Write a blank line to separate headers from the body
+        s.write("\n")
+
+        if r.content:
+            s.write(
+                self._format_message_body(
+                    r.content,
+                    r.headers.get("content-type", ""),  # type: ignore
+                )
+            )
+
+        return s.getvalue()
+
+    def _format_message_body(self, content: bytes, content_type: str) -> str:
+        decoded = content.decode("utf-8", errors="replace")
+
+        media_type = content_type.split(";", 1)[0].strip().lower()
+        if media_type != "application/json":
+            return decoded
+
+        try:
+            parsed = json.loads(decoded)
+        except json.JSONDecodeError:
+            return decoded
+
+        return json.dumps(parsed, indent=2, ensure_ascii=False)
 
     def server_connect(
         self, data: mitmproxy.proxy.server_hooks.ServerConnectionHookData
@@ -261,11 +364,15 @@ class BurpAiProxy:
         connections to the original Burp AI domain and redirects them to the
         configured backend URL.
         """
-        host, _ = data.server.address if data.server.address else ("", 0)
-        if host == BURP_AI_DOMAIN:
-            backend_url = urllib.parse.urlparse(self._url)
-            data.server.address = (str(backend_url.hostname), backend_url.port or 443)
-            data.server.sni = backend_url.hostname
+        if not self._debug:
+            host, _ = data.server.address if data.server.address else ("", 0)
+            if host == BURP_AI_DOMAIN:
+                backend_url = urllib.parse.urlparse(self._url)
+                data.server.address = (
+                    str(backend_url.hostname),
+                    backend_url.port or 443,
+                )
+                data.server.sni = backend_url.hostname
 
 
 addons = [BurpAiProxy()]
