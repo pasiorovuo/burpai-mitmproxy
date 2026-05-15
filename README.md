@@ -32,7 +32,10 @@ See `Contributing` below for more information on how to contribute.
 ## Running
 
 - Start the proxy: `mitmdump --listen-port 9001 --script proxy.py --set url=<open ai chat completions URL> --set api_key=<your API key>`
-- Configure a HTTP Proxy in Burp and point it to the running `mitmproxy`.
+- Configure a HTTP Proxy in Burp and point `ai.portswigger.net` to the running
+  `mitmproxy`. It's not recommended to proxy all traffic via the proxy, because
+  `mitmproxy` may impact testing of some categories of vulnerabilities such as
+  request smuggling.
 
 ## Configuration
 
