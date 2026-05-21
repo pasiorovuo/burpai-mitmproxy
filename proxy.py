@@ -20,7 +20,7 @@ import prompts
 import responses
 
 # Bump this constant after every change to ensure mitmdump reloads the addon.
-_VERSION = 2
+_VERSION = 3
 
 _EXPLORE_BASE = "/ai/hakawai-explore-service/api/v1/async"
 _EXPLORE_STATUS_RE = re.compile(r"^/ai/hakawai-explore-service/api/v1/async/status/([^/]+)$")
@@ -40,6 +40,7 @@ class BurpAiProxy:
         self._request_headers_blocklist: set[str] = set()
         self._response_headers_blocklist: set[str] = set()
         self._debug = False
+        self._passthrough = False
         self._logger = logging.getLogger(__name__)
         self._explore = explore.ExploreHandler()
 
@@ -83,11 +84,22 @@ class BurpAiProxy:
         loader.add_option(
             default=False,
             help=(
-                "Enable debugging on the proxy."
+                "Enable debugging on the proxy. "
                 "In debug mode the proxy will forward unhandled requests to the Burp AI backend "
                 "and log requests and responses in the console."
             ),
             name="debug",
+            typespec=bool,
+        )
+        loader.add_option(
+            default=False,
+            help=(
+                "Enable passthrough mode (requires debug=True). "
+                "All requests are forwarded to the real Portswigger backend without any "
+                "manipulation. Flows are still saved to disk. Use this to collect raw "
+                "evidence of Burp AI traffic for reverse engineering."
+            ),
+            name="passthrough",
             typespec=bool,
         )
         loader.add_option(
@@ -135,6 +147,13 @@ class BurpAiProxy:
             logging.basicConfig(level=logging.DEBUG if self._debug else logging.INFO)
             self._logger = logging.getLogger(__name__)
 
+        if "passthrough" in updated:
+            self._passthrough = mitmproxy.ctx.options.passthrough
+            if self._passthrough and not self._debug:
+                raise mitmproxy.exceptions.OptionsError(
+                    "The `passthrough` option requires `debug=True`."
+                )
+
         if "model" in updated:
             prompts.Prompt.set_model(mitmproxy.ctx.options.model)
 
@@ -149,6 +168,10 @@ class BurpAiProxy:
 
         # Save what Burp sent, before any modification.
         self._save_request(flow)
+
+        # In passthrough mode forward everything to Portswigger unmodified.
+        if self._passthrough:
+            return
 
         if flow.request.path == "/burp/balance":
             flow.response = responses.CreditBalanceResponse()
@@ -201,6 +224,11 @@ class BurpAiProxy:
 
         if flow.response is None:
             self._logger.warning("No response received")
+            return
+
+        # In passthrough mode save the raw Portswigger response and do nothing else.
+        if self._passthrough:
+            self._save_response(flow)
             return
 
         if ORIGINAL_URL_HEADER not in flow.request.headers:
