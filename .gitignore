@@ -2,3 +2,5 @@ __pycache__/
 .venv/
 start-proxy.sh
 .DS_Store
+.claude/settings.local.json
+.env
