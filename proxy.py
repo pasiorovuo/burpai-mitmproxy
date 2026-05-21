@@ -14,8 +14,15 @@ import mitmproxy.exceptions
 import mitmproxy.http
 import mitmproxy.proxy.server_hooks
 
+import explore
 import prompts
 import responses
+
+# Bump this constant after every change to ensure mitmdump reloads the addon.
+_VERSION = 1
+
+_EXPLORE_BASE = "/ai/hakawai-explore-service/api/v1/async"
+_EXPLORE_STATUS_RE = re.compile(r"^/ai/hakawai-explore-service/api/v1/async/status/([^/]+)$")
 
 BURP_AI_DOMAIN = "ai.portswigger.net"
 # We store the original URL here so that we can handle the request/response
@@ -33,6 +40,7 @@ class BurpAiProxy:
         self._response_headers_blocklist: set[str] = set()
         self._debug = False
         self._logger = logging.getLogger(__name__)
+        self._explore = explore.ExploreHandler()
 
     def load(self, loader: mitmproxy.addonmanager.Loader) -> None:
         loader.add_option(
@@ -146,7 +154,6 @@ class BurpAiProxy:
 
         # Handle specific paths as needed
         if flow.request.path == "/burp/balance":
-            # Mock response for /burp/balance endpoint
             flow.response = responses.CreditBalanceResponse()
         elif flow.request.path == "/ai/hakawai-explain-this/api/v1/explainthis":
             self.proxy_request(
@@ -157,6 +164,23 @@ class BurpAiProxy:
             self.proxy_request(
                 flow=flow,
                 prompt=prompts.MontoyaPrompt(flow.request.text),
+            )
+        elif flow.request.path == f"{_EXPLORE_BASE}/start":
+            body = json.loads(flow.request.text or "{}")
+            flow.response = self._explore.handle_start(
+                body, self._url, self._api_key, prompts.Prompt.model()
+            )
+        elif m := _EXPLORE_STATUS_RE.match(flow.request.path):
+            flow.response = self._explore.handle_status(m.group(1))
+        elif flow.request.path == f"{_EXPLORE_BASE}/continue":
+            body = json.loads(flow.request.text or "{}")
+            flow.response = self._explore.handle_continue(
+                body, self._url, self._api_key, prompts.Prompt.model()
+            )
+        elif flow.request.path == f"{_EXPLORE_BASE}/finish":
+            body = json.loads(flow.request.text or "{}")
+            flow.response = self._explore.handle_finish(
+                body, self._url, self._api_key, prompts.Prompt.model()
             )
         else:
             self._logger.warning(
