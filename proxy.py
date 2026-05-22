@@ -18,12 +18,15 @@ import mitmproxy.proxy.server_hooks
 import explore
 import prompts
 import responses
+import screenshot
 
 # Bump this constant after every change to ensure mitmdump reloads the addon.
-_VERSION = 3
+_VERSION = 4
 
 _EXPLORE_BASE = "/ai/hakawai-explore-service/api/v1/async"
-_EXPLORE_STATUS_RE = re.compile(r"^/ai/hakawai-explore-service/api/v1/async/status/([^/]+)$")
+_EXPLORE_STATUS_RE = re.compile(
+    r"^/ai/hakawai-explore-service/api/v1/async/status/([^/]+)$"
+)
 
 BURP_AI_DOMAIN = "ai.portswigger.net"
 # We store the original URL here so that we can handle the request/response
@@ -43,6 +46,7 @@ class BurpAiProxy:
         self._passthrough = False
         self._logger = logging.getLogger(__name__)
         self._explore = explore.ExploreHandler()
+        self._screenshot = screenshot.ScreenshotHandler()
 
     def load(self, loader: mitmproxy.addonmanager.Loader) -> None:
         loader.add_option(
@@ -162,7 +166,7 @@ class BurpAiProxy:
         if not self._api_key:
             raise mitmproxy.exceptions.OptionsError("The `api_key` option is required.")
 
-    def request(self, flow: mitmproxy.http.HTTPFlow) -> None:
+    async def request(self, flow: mitmproxy.http.HTTPFlow) -> None:
         if flow.request.pretty_host != BURP_AI_DOMAIN:
             return
 
@@ -200,6 +204,14 @@ class BurpAiProxy:
         elif flow.request.path == f"{_EXPLORE_BASE}/finish":
             body = json.loads(flow.request.text or "{}")
             flow.response = self._explore.handle_finish(
+                body, self._url, self._api_key, prompts.Prompt.model()
+            )
+        elif (
+            flow.request.path
+            == "/ai/hakawai-broken-access-control/api/v1/screenshot-sensitivity"
+        ):
+            body = json.loads(flow.request.text or "{}")
+            flow.response = await self._screenshot.handle(
                 body, self._url, self._api_key, prompts.Prompt.model()
             )
         else:
@@ -281,7 +293,9 @@ class BurpAiProxy:
             return
 
         r = flow.request
-        now = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        now = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
 
         s = io.StringIO()
         s.write(f"# {now} {r.method} {r.path}\n\n")

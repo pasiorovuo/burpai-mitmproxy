@@ -6,6 +6,7 @@ import logging
 import typing
 import uuid
 from dataclasses import dataclass, field
+from typing import cast
 
 import httpx
 import mitmproxy.http
@@ -39,8 +40,12 @@ class ExploreSession:
     # True for the step created by /start; False for all steps after /continue or /finish.
     # Controls whether exploration_id is included in PENDING status responses.
     is_initial_step: bool = True
-    pending_tool_calls: list[ToolCall] = field(default_factory=list)
-    conversation: list[dict[str, typing.Any]] = field(default_factory=list)
+    pending_tool_calls: list[ToolCall] = cast(
+        list[ToolCall], field(default_factory=list)
+    )
+    conversation: list[dict[str, typing.Any]] = cast(
+        list[dict[str, typing.Any]], field(default_factory=list)
+    )
     error: str | None = None
 
 
@@ -460,7 +465,7 @@ class ExploreHandler:
     ) -> None:
         session.state = _PROCESSING
         try:
-            payload = {
+            payload: dict[str, str | list[dict[str, typing.Any]] | int] = {
                 "model": model,
                 "messages": session.conversation,
                 "tools": _TOOL_DEFINITIONS,
@@ -480,7 +485,9 @@ class ExploreHandler:
                 data: dict[str, typing.Any] = resp.json()
 
             message: dict[str, typing.Any] = data["choices"][0]["message"]
-            raw_tool_calls: list[dict[str, typing.Any]] | None = message.get("tool_calls")
+            raw_tool_calls: list[dict[str, typing.Any]] | None = message.get(
+                "tool_calls"
+            )
 
             if not raw_tool_calls:
                 raise ValueError(
@@ -491,11 +498,14 @@ class ExploreHandler:
             session.conversation.append(message)
 
             session.pending_tool_calls = [
-                {
-                    "id": tc["id"],
-                    "tool_name": tc["function"]["name"],
-                    "arguments": json.loads(tc["function"]["arguments"]),
-                }
+                cast(
+                    ToolCall,
+                    {
+                        "id": tc["id"],
+                        "tool_name": tc["function"]["name"],
+                        "arguments": json.loads(tc["function"]["arguments"]),
+                    },
+                )
                 for tc in raw_tool_calls
             ]
             session.state = _COMPLETE
