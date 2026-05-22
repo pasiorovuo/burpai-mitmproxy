@@ -47,6 +47,10 @@ class ExploreSession:
         list[dict[str, typing.Any]], field(default_factory=list)
     )
     error: str | None = None
+    # Set on the first /finish. Subsequent /finish calls are ignored — no new LLM steps.
+    finishing: bool = False
+    # When True, _run_llm offers only reporter so the LLM has no other choice.
+    force_reporter: bool = False
 
 
 class ExploreStore:
@@ -418,7 +422,61 @@ class ExploreHandler:
         api_key: str,
         model: str,
     ) -> mitmproxy.http.Response:
-        return self._submit_results(body, backend_url, api_key, model)
+        exploration_id: str | None = body.get("exploration_id")
+        if not exploration_id:
+            return _error_response("Missing exploration_id")
+
+        session = self._store.by_exploration_id(exploration_id)
+        if session is None:
+            return _error_response(f"Unknown exploration_id: {exploration_id}")
+
+        if session.finishing:
+            # Already summarising — return the same step_id so Burp keeps polling it.
+            return _json_response(
+                http.HTTPStatus.ACCEPTED,
+                {
+                    "step_id": session.step_id,
+                    "exploration_id": exploration_id,
+                    "poll_interval_seconds": _POLL_INTERVAL,
+                },
+            )
+
+        for tr in body.get("tool_results", []):
+            session.conversation.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tr["tool_id"],
+                    "content": tr["result"],
+                }
+            )
+
+        session.conversation.append(
+            {
+                "role": "user",
+                "content": (
+                    "The user has stopped the exploration. "
+                    "Do not send any more requests. "
+                    "Call the `reporter` tool now and summarise what you have found and done so far."
+                ),
+            }
+        )
+
+        session.finishing = True
+        session.force_reporter = True
+        # Reset state in-place so Burp polls the SAME step_id for the reporter result.
+        session.state = _PENDING
+        session.pending_tool_calls = []
+
+        asyncio.ensure_future(self._run_llm(session, backend_url, api_key, model))
+
+        return _json_response(
+            http.HTTPStatus.ACCEPTED,
+            {
+                "step_id": session.step_id,
+                "exploration_id": exploration_id,
+                "poll_interval_seconds": _POLL_INTERVAL,
+            },
+        )
 
     def _submit_results(
         self,
@@ -464,11 +522,19 @@ class ExploreHandler:
         model: str,
     ) -> None:
         session.state = _PROCESSING
+        force_reporter = session.force_reporter
+        session.force_reporter = False
         try:
-            payload: dict[str, str | list[dict[str, typing.Any]] | int] = {
+            # When stopping, only offer reporter so the LLM has no choice.
+            tools = (
+                [t for t in _TOOL_DEFINITIONS if t["function"]["name"] == "reporter"]
+                if force_reporter
+                else _TOOL_DEFINITIONS
+            )
+            payload: dict[str, typing.Any] = {
                 "model": model,
                 "messages": session.conversation,
-                "tools": _TOOL_DEFINITIONS,
+                "tools": tools,
                 "tool_choice": "required",
                 "max_completion_tokens": 16384,
             }

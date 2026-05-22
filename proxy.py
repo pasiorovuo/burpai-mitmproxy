@@ -21,7 +21,7 @@ import responses
 import screenshot
 
 # Bump this constant after every change to ensure mitmdump reloads the addon.
-_VERSION = 4
+_VERSION = 9
 
 _EXPLORE_BASE = "/ai/hakawai-explore-service/api/v1/async"
 _EXPLORE_STATUS_RE = re.compile(
