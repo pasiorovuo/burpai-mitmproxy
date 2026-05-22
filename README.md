@@ -99,8 +99,7 @@ mitmdump \
   --script proxy.py \
   --set url=<openai-compatible chat completions URL> \
   --set api_key=<your API key> \
-  --set model=gpt-4o \ # Use a more capable model for better results
-  --set save_dir=./flows
+  --set model=gpt-4o # Use a more capable model for better results
 ```
 
 Then configure a HTTP proxy in Burp Suite and point `ai.portswigger.net` to
