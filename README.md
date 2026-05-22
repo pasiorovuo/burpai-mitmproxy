@@ -24,10 +24,14 @@ Portswigger and logs them to disk.
 
 ## Installation
 
-### 1. Clone the repo and install mitmproxy
+### 1. Clone the repo and install dependencies
 
 ```bash
-pip install mitmproxy
+git clone <repo-url>
+cd <repo-dir>
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
 ### 2. Generate mitmproxy certificates
@@ -82,6 +86,12 @@ keytool -importcert \
 ```
 
 ## Running
+
+Activate the virtual environment first if it is not already active:
+
+```bash
+source .venv/bin/activate
+```
 
 ```bash
 mitmdump \
