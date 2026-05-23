@@ -24,31 +24,51 @@ Portswigger and logs them to disk.
 
 ## Installation
 
-### 1. Clone the repo and install dependencies
+### 1. Get the latest version
+
+`burpai-mitmproxy` is published as Docker containers in the Github Container Registry.
+The versioning scheme is based on build dates. Navigate to
+https://github.com/pasiorovuo/burpai-mitmproxy/pkgs/container/burpai-mitmproxy and
+find the latest version available. Pull the image with
 
 ```bash
-git clone <repo-url>
-cd <repo-dir>
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+docker pull ghcr.io/pasiorovuo/burpai-mitmproxy:<version acquired above>
 ```
 
-### 2. Generate mitmproxy certificates
+### 2. Create an env file (optional)
 
-Run mitmproxy once to generate its CA certificate:
+The container requires below environment variables. Either create an .env file or
+pass them otherwise (e.g. with -e). It's important to point the url to the exact
+chat completions endpoint instead of the base URL.
+
+```ini
+CHAT_COMPLETION_API_KEY=...
+CHAT_COMPLETION_MODEL=...
+CHAT_COMPLETION_URL=.../v1/chat/completions
+```
+
+### 3. Start the container
+
+Start mitmproxy and it will generate the certificates.
 
 ```bash
-mitmdump --listen-port 9001
+docker run --detach --name burpai-mitmproxy -p 9001:9001 --env-file .env burpai-mitmproxy:<version>
 ```
 
-Certificates are written to `~/.mitmproxy/`. Stop mitmproxy after the
-certificates appear.
+### 4. Copy the certificate off the container
 
-### 3. Trust the mitmproxy CA certificate
+Certificates are written to `/home/mitmproxy/.mitmproxy/`. Copy them with
+
+```bash
+docker cp burpai-mitmproxy:/home/mitmproxy/.mitmproxy/mitmproxy-ca-cert.cer .
+```
+
+### 5. Trust the mitmproxy CA certificate
 
 Burp needs to trust mitmproxy's CA so it accepts the intercepted TLS connections.
 How this is done depends on your OS and Burp version.
+
+N.B. This step needs to be repeated every time the container is recreated.
 
 #### macOS
 
@@ -60,7 +80,7 @@ sudo security add-trusted-cert \
   -d \
   -r trustRoot \
   -k /Library/Keychains/System.keychain \
-  ~/.mitmproxy/mitmproxy-ca-cert.pem
+  mitmproxy-ca-cert.pem
 ```
 
 You will be prompted for your administrator password. After adding the
@@ -82,25 +102,18 @@ import the certificate into the bundled Java keystore instead:
 keytool -importcert \
   -alias mitmproxy \
   -keystore "/Applications/Burp Suite Professional.app/Contents/Resources/jre.bundle/Contents/Home/lib/security/cacerts" \
-  -file ~/.mitmproxy/mitmproxy-ca-cert.cer
+  -file mitmproxy-ca-cert.cer
 ```
 
 ## Running
 
-Activate the virtual environment first if it is not already active:
+The container can be started with
 
 ```bash
-source .venv/bin/activate
+docker run --detach --name burpai-mitmproxy -p 9001:9001 --env-file .env burpai-mitmproxy:<version>
 ```
 
-```bash
-mitmdump \
-  --listen-port 9001 \
-  --script proxy.py \
-  --set url=<openai-compatible chat completions URL> \
-  --set api_key=<your API key> \
-  --set model=gpt-4o # Use a more capable model for better results
-```
+If you've followed above installation steps, the container is already running.
 
 Then configure a HTTP proxy in Burp Suite and point `ai.portswigger.net` to
 `127.0.0.1:9001`. It is not recommended to proxy all Burp traffic through
@@ -115,7 +128,7 @@ All options are passed as `--set option=value` arguments to `mitmdump`.
 |---|---|---|
 | `url` | _(required)_ | Full URL to an OpenAI-compatible `/v1/chat/completions` endpoint |
 | `api_key` | _(required)_ | API key for the AI backend |
-| `model` | `gpt-4o` | Model to use. Must be vision-capable for screenshot classification |
+| `model` | `gpt-4o` | Model to use. Use a more capabel model such as Anthropic's Claude 4.6 for better results. Must be vision-capable for screenshot classification |
 | `save_dir` | _(none)_ | Directory where intercepted flows are saved as text files (created if absent) |
 | `debug` | `false` | Forward unhandled requests to Portswigger and log all flows to console |
 | `passthrough` | `false` | Forward **all** requests to Portswigger unmodified (requires `debug=true`). Use this to capture raw traffic for analysis |
