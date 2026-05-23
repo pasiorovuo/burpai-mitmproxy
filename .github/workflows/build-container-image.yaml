@@ -21,8 +21,14 @@ jobs:
       - name: Generate version number
         run: echo "IMAGE_VERSION=$(python3 -c "import datetime; d=datetime.datetime.now().timetuple(); print(f'{d.tm_year:04}.{d.tm_yday:03}.{d.tm_hour:02}{d.tm_min:02}{d.tm_sec:02}')")" >> $GITHUB_ENV
 
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
       - name: Build image
-        run: docker build -t $IMAGE_NAME:$IMAGE_VERSION .
+        run: docker buildx build --platform linux/amd64,linux/arm64 -t $IMAGE_NAME:$IMAGE_VERSION .
 
       - name: Log in to GitHub Container Registry
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
