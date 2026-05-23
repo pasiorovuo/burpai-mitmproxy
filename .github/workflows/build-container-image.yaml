@@ -1,0 +1,32 @@
+name: Build container image
+
+on:
+  push:
+    branches: [main]
+
+env:
+  IMAGE_NAME: burpai-mitmproxy
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Generate version number
+        run: echo "IMAGE_VERSION=$(python3 -c "import datetime; d=datetime.datetime.now().timetuple(); print(f'{d.tm_year:04}.{d.tm_yday:03}.{d.tm_hour:02}{d.tm_min:02}{d.tm_sec:02}')")" >> $GITHUB_ENV
+
+      - name: Build image
+        run: docker build -t $IMAGE_NAME:$IMAGE_VERSION .
+
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Push image
+        run: |
+            docker tag $IMAGE_NAME:$IMAGE_VERSION ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME:$IMAGE_VERSION
+            docker push ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME:$IMAGE_VERSION
