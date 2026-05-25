@@ -4,7 +4,7 @@ name: burpai-mitmproxy
 services:
   permissions:
     image: ${IMAGE_TAG}
-    container_name: permissions
+    container_name: burpai-mitmproxy-permissions
     command: chown -R mitmproxy:mitmproxy /home/mitmproxy/.mitmproxy
     user: root
     volumes:
@@ -12,7 +12,11 @@ services:
 
   mitmproxy:
     image: ${IMAGE_TAG}
-    container_name: proxy
+    container_name: burpai-mitmproxy-proxy
+    environment:
+      CHAT_COMPLETION_API_KEY: ${CHAT_COMPLETION_API_KEY}
+      CHAT_COMPLETION_MODEL: ${CHAT_COMPLETION_MODEL}
+      CHAT_COMPLETION_URL: ${CHAT_COMPLETION_URL}
     depends_on:
       permissions:
         condition: service_completed_successfully
