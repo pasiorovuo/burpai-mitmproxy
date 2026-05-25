@@ -1,0 +1,25 @@
+version: '3'
+name: burpai-mitmproxy
+
+services:
+  permissions:
+    image: ${IMAGE_TAG}
+    container_name: permissions
+    command: chown -R mitmproxy:mitmproxy /home/mitmproxy/.mitmproxy
+    user: root
+    volumes:
+      - mitmproxy:/home/mitmproxy/.mitmproxy:rw
+
+  mitmproxy:
+    image: ${IMAGE_TAG}
+    container_name: proxy
+    depends_on:
+      permissions:
+        condition: service_completed_successfully
+    ports:
+      - "9001:9001"
+    volumes:
+      - mitmproxy:/home/mitmproxy/.mitmproxy:rw
+
+volumes:
+  mitmproxy:
