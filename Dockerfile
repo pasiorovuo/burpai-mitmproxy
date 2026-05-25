@@ -23,8 +23,6 @@ USER mitmproxy
 
 EXPOSE 9001
 
-VOLUME /home/mitmproxy/.mitmproxy
-
 CMD exec mitmdump \
     --listen-port 9001 \
     --script proxy.py \
