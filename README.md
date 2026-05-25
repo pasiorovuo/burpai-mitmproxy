@@ -24,22 +24,18 @@ Portswigger and logs them to disk.
 
 ## Installation
 
-### 1. Get the latest version
+### 1. Download the latest release
 
-`burpai-mitmproxy` is published as Docker containers in the Github Container Registry.
-The versioning scheme is based on build dates. Navigate to
-https://github.com/pasiorovuo/burpai-mitmproxy/pkgs/container/burpai-mitmproxy and
-find the latest version available. Pull the image with
+Navigate to the
+[releases page](https://github.com/pasiorovuo/burpai-mitmproxy/releases) and
+download the `docker-compose.yaml` from the latest release. It contains the
+correct image reference for that release.
 
-```bash
-docker pull ghcr.io/pasiorovuo/burpai-mitmproxy:<version acquired above>
-```
+### 2. Create an env file
 
-### 2. Create an env file (optional)
-
-The container requires below environment variables. Either create an .env file or
-pass them otherwise (e.g. with -e). It's important to point the url to the exact
-chat completions endpoint instead of the base URL.
+Create a `.env` file next to `docker-compose.yaml` with the following variables.
+Point `CHAT_COMPLETION_URL` to the exact chat completions endpoint, not just the
+base URL.
 
 ```ini
 CHAT_COMPLETION_API_KEY=...
@@ -49,18 +45,19 @@ CHAT_COMPLETION_URL=.../v1/chat/completions
 
 ### 3. Start the container
 
-Start mitmproxy and it will generate the certificates.
-
 ```bash
-docker run --detach --name burpai-mitmproxy -p 9001:9001 --env-file .env burpai-mitmproxy:<version>
+docker compose up --detach
 ```
 
-### 4. Copy the certificate off the container
+mitmproxy generates its CA certificate on first start. The certificate is stored
+in a Docker volume so it survives container restarts.
 
-Certificates are written to `/home/mitmproxy/.mitmproxy/`. Copy them with
+### 4. Copy the certificate
+
+Extract the CA certificate from the Docker volume:
 
 ```bash
-docker cp burpai-mitmproxy:/home/mitmproxy/.mitmproxy/mitmproxy-ca-cert.cer .
+docker compose cp mitmproxy:/home/mitmproxy/.mitmproxy/mitmproxy-ca-cert.cer .
 ```
 
 ### 5. Trust the mitmproxy CA certificate
@@ -107,13 +104,12 @@ keytool -importcert \
 
 ## Running
 
-The container can be started with
+If you've followed the installation steps above, the container is already running.
+To start it again after a stop:
 
 ```bash
-docker run --detach --name burpai-mitmproxy -p 9001:9001 --env-file .env burpai-mitmproxy:<version>
+docker compose up --detach
 ```
-
-If you've followed above installation steps, the container is already running.
 
 Then configure a HTTP proxy in Burp Suite and point `ai.portswigger.net` to
 `127.0.0.1:9001`. It is not recommended to proxy all Burp traffic through
