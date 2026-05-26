@@ -57,7 +57,7 @@ in a Docker volume so it survives container restarts.
 Extract the CA certificate from the Docker volume:
 
 ```bash
-docker compose cp mitmproxy:/home/mitmproxy/.mitmproxy/mitmproxy-ca-cert.cer .
+docker compose cp burpai-mitmproxy-proxy:/home/mitmproxy/.mitmproxy/mitmproxy-ca-cert.cer .
 ```
 
 ### 5. Trust the mitmproxy CA certificate
