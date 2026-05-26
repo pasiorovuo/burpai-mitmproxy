@@ -65,8 +65,6 @@ docker compose cp burpai-mitmproxy-proxy:/home/mitmproxy/.mitmproxy/mitmproxy-ca
 Burp needs to trust mitmproxy's CA so it accepts the intercepted TLS connections.
 How this is done depends on your OS and Burp version.
 
-N.B. This step needs to be repeated every time the container is recreated.
-
 #### macOS
 
 Newer Burp releases on macOS use the system Keychain rather than a bundled Java
